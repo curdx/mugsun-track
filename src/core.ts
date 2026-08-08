@@ -34,6 +34,7 @@ export type {
   Props,
   QueueStore,
   RemoteConfig,
+  ReplayController,
   ResolvedTrackOptions,
   RouteInfo,
   TrackEvent,

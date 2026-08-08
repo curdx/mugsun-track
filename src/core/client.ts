@@ -5,6 +5,7 @@ import type {
   Props,
   QueueStore,
   RemoteConfig,
+  ReplayController,
   ResolvedTrackOptions,
   RouteInfo,
   TrackEvent,
@@ -42,6 +43,8 @@ const OPTOUT_SUFFIX = 'optout'
 
 export class TrackClient {
   readonly options: ResolvedTrackOptions
+  /** 回放插件挂载点（G100）：replay 插件 setup 时注册，teardown 摘除；未加载回放插件时恒为 null */
+  replay: ReplayController | null = null
 
   private identity: IdentityManager
   private session: SessionManager
@@ -54,6 +57,8 @@ export class TrackClient {
   private optedOut: boolean
   private routePathProvider: (() => string | undefined) | null = null
   private routeListeners = new Set<(info: RouteInfo) => void>()
+  private sessionListeners = new Set<(sessionId: string | null) => void>()
+  private errorListeners = new Set<(props: Props) => void>()
   private exposureDelegate: ((el: Element, params: ExposureParams) => void) | null = null
   private teardowns: Array<() => void> = []
   private contextProvider?: () => Props
@@ -132,6 +137,8 @@ export class TrackClient {
     if (!this.canTrack()) return
     const ev = this.buildEvent(event, props)
     this.queue.add(ev)
+    // $error 钩子：error 插件、vue errorHandler、手动 track 统一在此出口通知（replay 出错强传）
+    if (event === '$error') this.notifyError(ev.props)
   }
 
   /** 登录绑定：$identify 事件 props 携带 user_id（服务端约定），是否落映射由服务端按 token 裁定 */
@@ -144,15 +151,17 @@ export class TrackClient {
   /** 登出/切换账号：清空登录身份、更换 anonymous_id、轮换会话 */
   reset(): void {
     this.identity.reset()
-    this.session = new SessionManager(
-      this.kv,
-      `${this.options.storagePrefix}:${this.options.appKey}:session`,
-      this.options.sessionTimeout
-    )
+    const sessionKey = `${this.options.storagePrefix}:${this.options.appKey}:session`
+    // 持久化的旧会话一并失效：否则未过期的旧会话会被新 SessionManager 从 KV 读回复用，
+    // 「轮换会话」落空（多标签页共享同 key，登出即整会话轮换）
+    this.kv.removeItem(sessionKey)
+    this.session = new SessionManager(this.kv, sessionKey, this.options.sessionTimeout)
     this.sampled = isSampled(
       `${this.options.appKey}:${this.identity.distinctId}`,
       this.options.sampleRate
     )
+    // 会话失效通知（此时新会话尚未创建，listeners 收到 null）
+    this.notifySessionChange(null)
   }
 
   /** timeEvent：开始计时，track 同名事件时自动带 duration_ms */
@@ -209,6 +218,23 @@ export class TrackClient {
 
   getSessionId(): string {
     return this.session.touch(this.clock.now()).session.id
+  }
+
+  /** 只读当前会话 id（不续期不创建；无会话返回 null）。回放插件启动时首绑用，避免人为续期 */
+  peekSessionId(): string | null {
+    return this.session.current()?.id ?? null
+  }
+
+  /** 会话开始/轮换通知新 id、重置通知 null（replay 重置缓冲与 seq 用） */
+  onSessionChange(listener: (sessionId: string | null) => void): () => void {
+    this.sessionListeners.add(listener)
+    return () => this.sessionListeners.delete(listener)
+  }
+
+  /** $error 钩子：会话内出现错误时通知（replay 无视采样强制上传） */
+  onError(listener: (props: Props) => void): () => void {
+    this.errorListeners.add(listener)
+    return () => this.errorListeners.delete(listener)
   }
 
   isEnabled(): boolean {
@@ -272,6 +298,14 @@ export class TrackClient {
     return !this.disabled && !this.optedOut && this.sampled
   }
 
+  private notifySessionChange(sessionId: string | null): void {
+    for (const fn of [...this.sessionListeners]) fn(sessionId)
+  }
+
+  private notifyError(props: Props): void {
+    for (const fn of [...this.errorListeners]) fn(props)
+  }
+
   private buildEvent(event: string, props?: Props): TrackEvent {
     const now = this.clock.now()
     const { session, isNew, expired } = this.session.touch(now)
@@ -289,6 +323,8 @@ export class TrackClient {
     }
     if (isNew) {
       this.queue.add(this.makeEvent('$session_start', undefined, session.id, now))
+      // 首次建会与轮换都走这里（expired 蕴含 isNew）；回放插件据此重置缓冲与 seq
+      this.notifySessionChange(session.id)
     }
 
     return this.makeEvent(event, props, session.id, now)

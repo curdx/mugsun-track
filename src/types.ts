@@ -31,6 +31,10 @@ export interface RemoteConfig {
   sampleRate?: number
   enabled?: number | boolean
   maskSelectors?: string[] | string
+  /** 回放总开关（0/1 或 boolean），G100 */
+  replayEnabled?: number | boolean
+  /** 回放会话采样率 0-100，G100 */
+  replaySampleRate?: number
   [key: string]: unknown
 }
 
@@ -63,6 +67,18 @@ export interface PluginContext {
 export interface TrackPlugin {
   name: string
   setup(ctx: PluginContext): void | (() => void)
+}
+
+/**
+ * 会话回放控制面（G100）：replay 插件 setup 时挂到 client.replay，teardown 摘除。
+ * $error 强传与 pagehide 收尾块由插件内部钩子自动触发，外部一般无需调用；
+ * 该挂载点供调试/测试与上层定制场景手动控制。
+ */
+export interface ReplayController {
+  /** 无视采样强制上传本会话已录缓冲 */
+  forceUpload(): void
+  /** 立即切收尾块并 beacon 发送（页面卸载场景） */
+  flushFinal(): void
 }
 
 /** SPA 路由信息（url_path 原始路径 + route_path 路由模板双写） */
@@ -101,6 +117,10 @@ export interface TrackOptions {
   respectDnt?: boolean
   /** 自动采集屏蔽选择器（与远端下发合并） */
   maskSelectors?: string[]
+  /** 回放总开关，默认 false；远端下发 replayEnabled 可开启（下次启动生效）。replay 插件据此常录 */
+  replayEnabled?: boolean
+  /** 回放会话采样率 0-100，默认 10；远端下发优先（下次启动生效）。只决定上传，录制不受影响 */
+  replaySampleRate?: number
   /** 会话滑动过期 ms，默认 30min */
   sessionTimeout?: number
   /** 本地存储 key 前缀，默认 mst */
@@ -132,6 +152,8 @@ export type ResolvedTrackOptions = Required<
     | 'sessionTimeout'
     | 'storagePrefix'
     | 'fetchRemoteConfig'
+    | 'replayEnabled'
+    | 'replaySampleRate'
     | 'debug'
   >
 > &

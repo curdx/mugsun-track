@@ -8,6 +8,7 @@ mugsun 低代码平台 Web 埋点 SDK。TypeScript 严格模式、框架无关�
 - 采样：anonymous_id 哈希分桶，会话级一致
 - 幂等：event_id 用 crypto.randomUUID 生成，跨重发稳定，服务端按 event_id 去重
 - 隐私：尊重 DNT、optOut() API、默认不采输入框值、password 与自定义选择器整块屏蔽
+- 会话回放（G100，可选插件）：rrweb 常录 + 采样选择性上传 + 出错强传，独立子路径入口懒加载不占首包
 
 ## 安装
 
@@ -100,10 +101,45 @@ track.reset() // 登出：清空登录身份、更换 anonymous_id、轮换会�
 | web-vitals | `$web_vitals` | 开 | PerformanceObserver：LCP/INP/CLS/FCP/TTFB/longtask，页面首次隐藏时一次性上报；逐指标事件 `{metric, value}`（与服务端直方图聚合口径一致），longtask 统计随首条捎带 |
 | error | `$error` | 开 | window error（捕获阶段，含资源加载错误）+ unhandledrejection；带 release 与 error_fingerprint（message + 堆栈首帧 hash，服务端按指纹分组） |
 | api-monitor | `api_request` | **关** | fetch/XHR 包装：url（去查询串）/method/status/duration/success；排除自身 collect/config 请求防自埋点；需显式加入 plugins 开启 |
+| replay | （回放块，非事件） | **关** | 会话回放：常录 + 选择性上传 + 出错强传；独立子路径入口 `@mugsun/track-web/replay`，见「会话回放」章节 |
 
 会话事件：`$session_start` / `$session_end`（30min 静默轮换时成对补发，`$session_end` 带 duration_ms）。
 
-会话回放插件本期不包含；插件契约（`TrackPlugin.setup(ctx) → teardown?`）即扩展点，后续按同一接口接入。
+## 会话回放（G100）
+
+基于 rrweb 的会话回放，独立入口按需加载（不进主入口首包）：
+
+```ts
+import { createTracker, defaultPlugins } from '@mugsun/track-web'
+import { replayPlugin } from '@mugsun/track-web/replay'
+
+createTracker({
+  endpoint,
+  appKey,
+  plugins: [...defaultPlugins(), replayPlugin()]
+})
+```
+
+**录制与上传语义（常录 + 选择性上传）**：
+
+- `replayEnabled`（本地配置或远端下发，下次启动生效）才开录：录入内存环形缓冲（最近 5 分钟或 10MB 滚动覆盖）；总开关关闭则完全不录
+- 会话命中 `replaySampleRate`（默认 10%，`${appKey}:${session_id}` 哈希分桶，会话级一致）→ 会话内分块上传
+- 会话内出现 `$error` → **无视采样强制上传**（错误发生前的已录缓冲一并带出，即错误现场上下文）
+- 未命中且无错误 → 缓冲随会话结束丢弃；主采样未命中/optOut 的会话不录（事件都不采，回放无意义）
+- 分块：每 5s 或 50 个事件切一块，`seq` 会话内自增（0 起）；pagehide 时 beacon 发收尾块（明文同步编码，保证卸载前发出）
+- 传输独立通道（不复用事件队列）：单块失败指数退避重试 3 次后丢弃——回放可丢，绝不阻塞事件主队列
+
+**隐私默认值（最严）**：`maskAllInputs: true`（所有输入值 `***`）；文本不遮罩；`input[type="password"]`、`[data-track-mask]` 与 `maskSelectors`（本地 + 远端下发合并）命中的元素整块不录；不采 canvas。
+
+**服务端要求**：`POST {endpoint}/track/replay`，body JSON：
+
+```json
+{ "app_key", "session_id", "seq", "event_count", "gzip", "payload" }
+```
+
+- `payload` 恒为 base64；`gzip: true` 时解码后需再 gunzip（CompressionStream），`false` 为明文 JSON 数组（降级路径与 pagehide 收尾块）
+- 单块 = rrweb 事件 JSON 数组（含全量快照块与增量流块），服务端按 `session_id` 聚合、`seq` 排序组装；丢块表现为 seq 空洞
+- 服务端组装后存对象存储（私有桶，键 `replay/{app_key}/{yyyyMM}/{session_id}/{seq}.gz`），元数据落 `track_replay` 表并联动 `track_session.has_replay`；回放短保留期（默认 14 天）
 
 ### 自定义插件组合
 
@@ -140,6 +176,8 @@ createTracker({
 | `retryBaseDelay` / `retryMaxDelay` | 1000 / 30000 | 补发退避基数/上限 ms（`base * 2^n` 封顶） |
 | `respectDnt` | true | 尊重 Do Not Track |
 | `maskSelectors` | [] | 自动采集屏蔽选择器（与远端下发合并） |
+| `replayEnabled` | false | 回放总开关；远端下发 `replayEnabled` 可开启（下次启动生效），replay 插件据此开录 |
+| `replaySampleRate` | 10 | 回放会话采样率 0-100；远端下发优先。只决定上传，录制不受影响 |
 | `sessionTimeout` | 30min | 会话滑动过期 |
 | `storagePrefix` | `mst` | localStorage key 前缀 |
 | `plugins` | 默认 6 插件 | 见插件清单 |
@@ -149,7 +187,7 @@ createTracker({
 
 ## 配置下发
 
-启动时先用上次缓存的远端配置（`GET {endpoint}/track/config?app_key=xxx` 返回 R 信封 data 内的采样率 sampleRate / 总开关 enabled / 屏蔽选择器 maskSelectors），再异步拉取新配置写缓存 —— **新配置在下次启动生效，会话中途不热更**。配置拉取失败不影响采集。
+启动时先用上次缓存的远端配置（`GET {endpoint}/track/config?app_key=xxx` 返回 R 信封 data 内的采样率 sampleRate / 总开关 enabled / 屏蔽选择器 maskSelectors / 回放开关 replayEnabled / 回放采样率 replaySampleRate），再异步拉取新配置写缓存 —— **新配置在下次启动生效，会话中途不热更**。配置拉取失败不影响采集。
 
 ## 事件协议
 
@@ -173,6 +211,7 @@ POST {endpoint}/track/collect
 - 尊重 DNT：浏览器开启 Do Not Track 且 `respectDnt`（默认开）时不采集
 - `optOut()` 后停止采集并清空本地待发队列
 - 永不采集 input/textarea 的 value；password 输入框与 `maskSelectors`（本地 + 远端下发合并）命中的子树整体屏蔽
+- 会话回放默认最严：所有输入值 `***`，password 与 maskSelectors 子树整块不录，不采 canvas；主采样未命中或 optOut 的会话不录
 - 不收集 cookie 与 localStorage 内容；接口监控上报的 url 去掉查询串，防敏感参数泄露
 
 ## 工程
@@ -189,3 +228,4 @@ pnpm typecheck  # tsc --noEmit（strict）
 - `@mugsun/track-web`：createTracker + 默认插件集（含浏览器适配器）
 - `@mugsun/track-web/core`：纯逻辑 core（零 DOM，体积门禁对象）
 - `@mugsun/track-web/vue`：Vue 插件（install / v-track / router 集成 / errorHandler 挂接）
+- `@mugsun/track-web/replay`：会话回放插件（rrweb 动态 import 懒加载，不进主入口首包）

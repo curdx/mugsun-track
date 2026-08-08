@@ -20,6 +20,8 @@ export function resolveOptions(options: TrackOptions): ResolvedTrackOptions {
     retryMaxDelay: options.retryMaxDelay ?? 30000,
     respectDnt: options.respectDnt ?? true,
     maskSelectors: [...(options.maskSelectors ?? [])],
+    replayEnabled: options.replayEnabled ?? false,
+    replaySampleRate: options.replaySampleRate ?? 10,
     sessionTimeout: options.sessionTimeout ?? 30 * 60 * 1000,
     storagePrefix: options.storagePrefix ?? 'mst',
     plugins: options.plugins ?? [],
@@ -47,7 +49,7 @@ export class RemoteConfigManager {
     return safeParse<RemoteConfig>(this.kv.getItem(this.storageKey))
   }
 
-  /** 把缓存配置应用到 options（采样率/总开关/屏蔽选择器；字段名与后端 camelCase 约定） */
+  /** 把缓存配置应用到 options（采样率/总开关/屏蔽选择器/回放配置；字段名与后端 camelCase 约定） */
   applyTo(options: ResolvedTrackOptions): void {
     const cfg = this.cached()
     if (!cfg) return
@@ -56,6 +58,16 @@ export class RemoteConfigManager {
     }
     if (cfg.enabled === false || cfg.enabled === 0) {
       options.enabled = false
+    }
+    // 回放开关双向生效（G100 由后端开启）；采样率同主采样口径收拢 0-100
+    if (cfg.replayEnabled === true || cfg.replayEnabled === 1) {
+      options.replayEnabled = true
+    }
+    if (cfg.replayEnabled === false || cfg.replayEnabled === 0) {
+      options.replayEnabled = false
+    }
+    if (typeof cfg.replaySampleRate === 'number') {
+      options.replaySampleRate = Math.min(100, Math.max(0, cfg.replaySampleRate))
     }
     const masks = Array.isArray(cfg.maskSelectors)
       ? cfg.maskSelectors

@@ -21,6 +21,11 @@
       "types": "./dist/vue/index.d.ts",
       "import": "./dist/vue/index.js",
       "require": "./dist/vue/index.cjs"
+    },
+    "./replay": {
+      "types": "./dist/replay/index.d.ts",
+      "import": "./dist/replay/index.js",
+      "require": "./dist/replay/index.cjs"
     }
   },
   "files": [
@@ -33,6 +38,9 @@
       ],
       "core": [
         "dist/core.d.ts"
+      ],
+      "replay": [
+        "dist/replay/index.d.ts"
       ]
     }
   },
@@ -61,5 +69,8 @@
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "vue": "^3.5.41"
+  },
+  "dependencies": {
+    "rrweb": "^2.1.1"
   }
 }
