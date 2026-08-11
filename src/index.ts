@@ -77,7 +77,7 @@ export function createTracker(options: TrackOptions): TrackClient {
 export { TrackClient } from './core/client'
 export type { ClientDeps, ExposureParams } from './core/client'
 export { Transport } from './core/transport'
-export type { TransportDeps } from './core/transport'
+export type { SendResult, TransportDeps } from './core/transport'
 export { EventQueue } from './core/queue'
 export { SessionManager } from './core/session'
 export { IdentityManager } from './core/identity'
@@ -95,6 +95,13 @@ export {
   apiMonitorPlugin
 }
 export type { PageviewPluginOptions } from './plugins/pageview'
+export type { ApiMonitorPluginOptions } from './plugins/api-monitor'
+export { ApiBodyUploader, maskSensitiveBody } from './plugins/api-monitor'
+export type {
+  ApiBodyPayload,
+  ApiBodySendOutcome,
+  ApiBodyUploaderOptions
+} from './plugins/api-monitor'
 export { fingerprintOf } from './plugins/error'
 export type {
   KeyValueStore,

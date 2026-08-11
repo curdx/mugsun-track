@@ -5,7 +5,7 @@
 export { TrackClient } from './core/client'
 export type { ClientDeps, ExposureParams } from './core/client'
 export { Transport } from './core/transport'
-export type { TransportDeps, SendOptions } from './core/transport'
+export type { SendResult, TransportDeps, SendOptions } from './core/transport'
 export { EventQueue } from './core/queue'
 export type { EventQueueOptions } from './core/queue'
 export { SessionManager } from './core/session'

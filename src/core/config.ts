@@ -22,6 +22,11 @@ export function resolveOptions(options: TrackOptions): ResolvedTrackOptions {
     maskSelectors: [...(options.maskSelectors ?? [])],
     replayEnabled: options.replayEnabled ?? false,
     replaySampleRate: options.replaySampleRate ?? 10,
+    // G102 接口监控链四开关：不透传默认值，undefined 留给远端缓存配置补齐（本地显式设置优先）
+    apiMonitorEnabled: options.apiMonitorEnabled,
+    apiBodyEnabled: options.apiBodyEnabled,
+    apiBodyMaskEnabled: options.apiBodyMaskEnabled,
+    apiBodyMaxBytes: options.apiBodyMaxBytes,
     sessionTimeout: options.sessionTimeout ?? 30 * 60 * 1000,
     storagePrefix: options.storagePrefix ?? 'mst',
     plugins: options.plugins ?? [],
@@ -31,6 +36,13 @@ export function resolveOptions(options: TrackOptions): ResolvedTrackOptions {
 }
 
 export type ConfigFetcher = (url: string) => Promise<RemoteConfig | null>
+
+/** 远端开关 0/1 与 boolean 双形态归一（与 replayEnabled 同口径）；非开关形态返回 undefined */
+function asBool(v: unknown): boolean | undefined {
+  if (v === true || v === 1) return true
+  if (v === false || v === 0) return false
+  return undefined
+}
 
 /**
  * 远端配置：启动时先用上次缓存的配置生效，再异步拉新配置写缓存 ——
@@ -68,6 +80,26 @@ export class RemoteConfigManager {
     }
     if (typeof cfg.replaySampleRate === 'number') {
       options.replaySampleRate = Math.min(100, Math.max(0, cfg.replaySampleRate))
+    }
+    // G102 接口监控链：本地显式设置优先，未设置（undefined）时由远端下发补齐，双向可开关
+    if (options.apiMonitorEnabled === undefined) {
+      const v = asBool(cfg.apiMonitorEnabled)
+      if (v !== undefined) options.apiMonitorEnabled = v
+    }
+    if (options.apiBodyEnabled === undefined) {
+      const v = asBool(cfg.apiBodyEnabled)
+      if (v !== undefined) options.apiBodyEnabled = v
+    }
+    if (options.apiBodyMaskEnabled === undefined) {
+      const v = asBool(cfg.apiBodyMaskEnabled)
+      if (v !== undefined) options.apiBodyMaskEnabled = v
+    }
+    if (
+      options.apiBodyMaxBytes === undefined &&
+      typeof cfg.apiBodyMaxBytes === 'number' &&
+      cfg.apiBodyMaxBytes > 0
+    ) {
+      options.apiBodyMaxBytes = Math.floor(cfg.apiBodyMaxBytes)
     }
     const masks = Array.isArray(cfg.maskSelectors)
       ? cfg.maskSelectors

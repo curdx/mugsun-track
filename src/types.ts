@@ -35,6 +35,14 @@ export interface RemoteConfig {
   replayEnabled?: number | boolean
   /** 回放会话采样率 0-100，G100 */
   replaySampleRate?: number
+  /** 接口监控总开关（0/1 或 boolean），G102 */
+  apiMonitorEnabled?: number | boolean
+  /** 响应体采集开关（0/1 或 boolean），G102 */
+  apiBodyEnabled?: number | boolean
+  /** 响应体业务字段脱敏开关（0/1 或 boolean），G102 */
+  apiBodyMaskEnabled?: number | boolean
+  /** 响应体安全阀（字节），G102 */
+  apiBodyMaxBytes?: number
   [key: string]: unknown
 }
 
@@ -121,6 +129,18 @@ export interface TrackOptions {
   replayEnabled?: boolean
   /** 回放会话采样率 0-100，默认 10；远端下发优先（下次启动生效）。只决定上传，录制不受影响 */
   replaySampleRate?: number
+  /**
+   * 接口监控总开关（api_request 事件元数据），默认关。
+   * 本地显式设置强制覆盖远端下发；本地未设置时远端 apiMonitorEnabled 决定（下次启动生效）。
+   * api-monitor 插件不在默认插件集，需显式加入 plugins 后本开关才接管启停
+   */
+  apiMonitorEnabled?: boolean
+  /** 响应体采集开关，默认关；优先级同上。仅在 apiMonitorEnabled 开启后生效 */
+  apiBodyEnabled?: boolean
+  /** 响应体业务字段脱敏开关（内置敏感键清单 → ***），默认关；优先级同上 */
+  apiBodyMaskEnabled?: boolean
+  /** 响应体安全阀（字节），默认 1MB；优先级同上。超限不采并标 body_skipped=size */
+  apiBodyMaxBytes?: number
   /** 会话滑动过期 ms，默认 30min */
   sessionTimeout?: number
   /** 本地存储 key 前缀，默认 mst */
@@ -160,4 +180,12 @@ export type ResolvedTrackOptions = Required<
   Pick<TrackOptions, 'release' | 'headers'> & {
     maskSelectors: string[]
     plugins: TrackPlugin[]
+    /**
+     * G102 接口监控链四开关：本地显式设置优先（强制覆盖远端下发），未设置时远端缓存配置补齐；
+     * 最终缺省（关/关/关/1MB）由 api-monitor 插件兜底
+     */
+    apiMonitorEnabled?: boolean
+    apiBodyEnabled?: boolean
+    apiBodyMaskEnabled?: boolean
+    apiBodyMaxBytes?: number
   }

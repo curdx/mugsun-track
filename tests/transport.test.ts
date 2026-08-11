@@ -117,4 +117,31 @@ describe('Transport 降级链', () => {
     await t.send(payload)
     expect(seen.Authorization).toBe('Bearer token-1')
   })
+
+  it('sendDetailed 透出 HTTP 状态码：503/400 供调用方裁定重试语义', async () => {
+    const t503 = new Transport(
+      'https://t/api-body',
+      makeDeps({ fetch: async () => ({ ok: false, status: 503 }) }).deps
+    )
+    expect(await t503.sendDetailed(payload)).toEqual({ ok: false, status: 503 })
+    const t400 = new Transport(
+      'https://t/api-body',
+      makeDeps({ fetch: async () => ({ ok: false, status: 400 }) }).deps
+    )
+    expect(await t400.sendDetailed(payload)).toEqual({ ok: false, status: 400 })
+    // send 仍只回布尔（队列口径不变）
+    expect(await t400.send(payload)).toBe(false)
+  })
+
+  it('sendDetailed：beacon 成功与网络层失败状态码为 0', async () => {
+    const { deps } = makeDeps()
+    const t = new Transport('https://t/collect', deps)
+    expect(await t.sendDetailed(payload, { preferBeacon: true })).toEqual({ ok: true, status: 0 })
+    const down = new Transport('https://t/collect', {
+      fetch: async () => {
+        throw new Error('network down')
+      }
+    })
+    expect(await down.sendDetailed(payload)).toEqual({ ok: false, status: 0 })
+  })
 })

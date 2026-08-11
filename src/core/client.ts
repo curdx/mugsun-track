@@ -132,13 +132,17 @@ export class TrackClient {
     }
   }
 
-  /** 采集自定义事件 */
-  track(event: string, props?: Props): void {
-    if (!this.canTrack()) return
-    const ev = this.buildEvent(event, props)
+  /**
+   * 采集自定义事件；返回 event_id（被采样/停用时返回 null）。
+   * opts.eventId 预生成事件 id：api-monitor 需要先把 body_ref 写进 props，再用同一 id 关联 body 上传
+   */
+  track(event: string, props?: Props, opts?: { eventId?: string }): string | null {
+    if (!this.canTrack()) return null
+    const ev = this.buildEvent(event, props, opts?.eventId)
     this.queue.add(ev)
     // $error 钩子：error 插件、vue errorHandler、手动 track 统一在此出口通知（replay 出错强传）
     if (event === '$error') this.notifyError(ev.props)
+    return ev.event_id
   }
 
   /** 登录绑定：$identify 事件 props 携带 user_id（服务端约定），是否落映射由服务端按 token 裁定 */
@@ -306,7 +310,7 @@ export class TrackClient {
     for (const fn of [...this.errorListeners]) fn(props)
   }
 
-  private buildEvent(event: string, props?: Props): TrackEvent {
+  private buildEvent(event: string, props?: Props, eventId?: string): TrackEvent {
     const now = this.clock.now()
     const { session, isNew, expired } = this.session.touch(now)
 
@@ -327,14 +331,15 @@ export class TrackClient {
       this.notifySessionChange(session.id)
     }
 
-    return this.makeEvent(event, props, session.id, now)
+    return this.makeEvent(event, props, session.id, now, eventId)
   }
 
   private makeEvent(
     event: string,
     props: Props | undefined,
     sessionId: string,
-    ts: number
+    ts: number,
+    eventId?: string
   ): TrackEvent {
     const merged: Props = {
       ...this.commonProps(),
@@ -344,7 +349,7 @@ export class TrackClient {
     const duration = this.timeEvents.consume(event)
     if (duration !== null && merged.duration_ms === undefined) merged.duration_ms = duration
     return {
-      event_id: uuid(),
+      event_id: eventId ?? uuid(),
       event,
       ts,
       distinct_id: this.identity.distinctId,

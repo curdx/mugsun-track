@@ -22,6 +22,12 @@ export interface SendOptions {
   preferBeacon?: boolean
 }
 
+export interface SendResult {
+  ok: boolean
+  /** HTTP 状态码；beacon 无状态码、网络层失败、XHR 降级路径为 0 */
+  status: number
+}
+
 /** sendBeacon 硬限制 64KB，留余量取 60KB */
 const BEACON_LIMIT = 60 * 1024
 /** fetch keepalive 限制 64KB */
@@ -42,11 +48,19 @@ export class Transport {
   ) {}
 
   async send(payload: unknown, opts: SendOptions = {}): Promise<boolean> {
+    return (await this.sendDetailed(payload, opts)).ok
+  }
+
+  /**
+   * 带状态码的发送（api-body 等需要按状态裁定重试语义的独立通道：4xx 不重试、5xx/网络失败重试）。
+   * 降级链与 send 一致；beacon 成功/XHR 路径无状态码返回 0。
+   */
+  async sendDetailed(payload: unknown, opts: SendOptions = {}): Promise<SendResult> {
     const body = JSON.stringify(payload)
 
     if (opts.preferBeacon && this.deps.beacon && byteLength(body) <= BEACON_LIMIT) {
       try {
-        if (this.deps.beacon(this.collectUrl, body)) return true
+        if (this.deps.beacon(this.collectUrl, body)) return { ok: true, status: 0 }
       } catch {
         // beacon 抛错继续降级
       }
@@ -71,8 +85,8 @@ export class Transport {
       try {
         const keepalive = !!opts.preferBeacon && byteLengthOf(out) <= KEEPALIVE_LIMIT
         const res = await this.deps.fetch(this.collectUrl, { body: out, headers, keepalive })
-        // 服务端已应答（含 4xx/5xx）：降级 XHR 无意义，按失败交给队列退避
-        return res.ok
+        // 服务端已应答（含 4xx/5xx）：降级 XHR 无意义，按失败交给调用方裁定
+        return { ok: res.ok, status: res.status }
       } catch {
         // 网络层失败（超时/断网/CORS）→ 降级 XHR
       }
@@ -80,12 +94,13 @@ export class Transport {
 
     if (this.deps.xhr) {
       try {
-        return await this.deps.xhr(this.collectUrl, out, headers)
+        // XHR 包装只回布尔：状态码未知按 0（可重试）处理
+        return { ok: await this.deps.xhr(this.collectUrl, out, headers), status: 0 }
       } catch {
-        return false
+        return { ok: false, status: 0 }
       }
     }
-    return false
+    return { ok: false, status: 0 }
   }
 }
 
