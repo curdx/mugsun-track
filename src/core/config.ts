@@ -1,5 +1,11 @@
-import type { KeyValueStore, RemoteConfig, ResolvedTrackOptions, TrackOptions } from '../types'
-import { safeParse } from './utils'
+import type {
+  KeyValueStore,
+  RemoteConfig,
+  ResolvedTrackOptions,
+  TrackOptions,
+  VisualRule
+} from '../types'
+import { CUSTOM_EVENT_NAME_RE, safeParse } from './utils'
 
 export function resolveOptions(options: TrackOptions): ResolvedTrackOptions {
   if (!options.appKey) throw new Error('[track] appKey 必填')
@@ -27,6 +33,8 @@ export function resolveOptions(options: TrackOptions): ResolvedTrackOptions {
     apiBodyEnabled: options.apiBodyEnabled,
     apiBodyMaskEnabled: options.apiBodyMaskEnabled,
     apiBodyMaxBytes: options.apiBodyMaxBytes,
+    // G104 圈选规则：同上，undefined 留给远端缓存配置补齐
+    visualRules: options.visualRules,
     sessionTimeout: options.sessionTimeout ?? 30 * 60 * 1000,
     storagePrefix: options.storagePrefix ?? 'mst',
     plugins: options.plugins ?? [],
@@ -42,6 +50,24 @@ function asBool(v: unknown): boolean | undefined {
   if (v === true || v === 1) return true
   if (v === false || v === 0) return false
   return undefined
+}
+
+/** 远端圈选规则过滤（G104）：event/selector 必为字符串且 event 过白名单正则；routePath/matchText 非字符串归 null */
+function parseVisualRules(raw: unknown[]): VisualRule[] {
+  const out: VisualRule[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    if (typeof r.event !== 'string' || typeof r.selector !== 'string') continue
+    if (!CUSTOM_EVENT_NAME_RE.test(r.event)) continue
+    out.push({
+      event: r.event,
+      selector: r.selector,
+      routePath: typeof r.routePath === 'string' ? r.routePath : null,
+      matchText: typeof r.matchText === 'string' ? r.matchText : null
+    })
+  }
+  return out
 }
 
 /**
@@ -100,6 +126,10 @@ export class RemoteConfigManager {
       cfg.apiBodyMaxBytes > 0
     ) {
       options.apiBodyMaxBytes = Math.floor(cfg.apiBodyMaxBytes)
+    }
+    // G104 圈选规则：本地显式设置优先，未设置（undefined）时远端下发补齐；非法项过滤
+    if (options.visualRules === undefined && Array.isArray(cfg.visualRules)) {
+      options.visualRules = parseVisualRules(cfg.visualRules)
     }
     const masks = Array.isArray(cfg.maskSelectors)
       ? cfg.maskSelectors

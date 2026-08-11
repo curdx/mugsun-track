@@ -37,6 +37,9 @@ export function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) : str
 }
 
+/** 自定义事件名白名单（$ 为服务端保留字；远端圈选规则过滤与圈选面板校验共用） */
+export const CUSTOM_EVENT_NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/
+
 export function byteLength(str: string): number {
   return new TextEncoder().encode(str).length
 }

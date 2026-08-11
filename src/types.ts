@@ -26,6 +26,18 @@ export interface TrackPayload {
   events: TrackEvent[]
 }
 
+/** 圈选规则（G104）：/track/config 下发，visual-track 插件命中上报 */
+export interface VisualRule {
+  /** 自定义事件名（过 CUSTOM_EVENT_NAME_RE 白名单，$ 前缀必拒） */
+  event: string
+  /** 圈选生成的 CSS 选择器，≤512 */
+  selector: string
+  /** 路由模板前缀限定；null/缺省 = 全站 */
+  routePath?: string | null
+  /** 元素文本包含限定；null/缺省 = 不限 */
+  matchText?: string | null
+}
+
 /** GET /track/config 下发内容（R 信封 data 内，camelCase 与后端约定；下次启动生效） */
 export interface RemoteConfig {
   sampleRate?: number
@@ -43,6 +55,8 @@ export interface RemoteConfig {
   apiBodyMaskEnabled?: number | boolean
   /** 响应体安全阀（字节），G102 */
   apiBodyMaxBytes?: number
+  /** 圈选规则下发（G104，status=1 规则，服务端限量） */
+  visualRules?: VisualRule[]
   [key: string]: unknown
 }
 
@@ -141,6 +155,12 @@ export interface TrackOptions {
   apiBodyMaskEnabled?: boolean
   /** 响应体安全阀（字节），默认 1MB；优先级同上。超限不采并标 body_skipped=size */
   apiBodyMaxBytes?: number
+  /**
+   * 圈选规则（G104 visual-track 插件），默认无。
+   * 本地显式设置强制覆盖远端下发；本地未设置时远端 visualRules 决定（下次启动生效）。
+   * visual-track 插件不在默认插件集，需显式加入 plugins 后规则才参与命中
+   */
+  visualRules?: VisualRule[]
   /** 会话滑动过期 ms，默认 30min */
   sessionTimeout?: number
   /** 本地存储 key 前缀，默认 mst */
@@ -188,4 +208,6 @@ export type ResolvedTrackOptions = Required<
     apiBodyEnabled?: boolean
     apiBodyMaskEnabled?: boolean
     apiBodyMaxBytes?: number
+    /** G104 圈选规则：本地显式设置优先，未设置时远端缓存配置补齐；缺省无规则（不装监听零开销） */
+    visualRules?: VisualRule[]
   }

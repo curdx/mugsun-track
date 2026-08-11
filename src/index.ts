@@ -16,10 +16,11 @@ import { errorPlugin } from './plugins/error'
 import { exposurePlugin } from './plugins/exposure'
 import { pageleavePlugin } from './plugins/pageleave'
 import { pageviewPlugin } from './plugins/pageview'
+import { visualTrack } from './plugins/visual-track'
 import { webVitalsPlugin } from './plugins/web-vitals'
 import type { TrackOptions, TrackPlugin } from './types'
 
-/** 默认插件集：api-monitor 默认关闭，需显式加入 */
+/** 默认插件集：api-monitor / visual-track 默认关闭，需显式加入 */
 export function defaultPlugins(): TrackPlugin[] {
   return [
     pageviewPlugin(),
@@ -92,8 +93,10 @@ export {
   exposurePlugin,
   webVitalsPlugin,
   errorPlugin,
-  apiMonitorPlugin
+  apiMonitorPlugin,
+  visualTrack
 }
+export { generateSelector, matchesRule } from './plugins/visual-track'
 export type { PageviewPluginOptions } from './plugins/pageview'
 export type { ApiMonitorPluginOptions } from './plugins/api-monitor'
 export { ApiBodyUploader, maskSensitiveBody } from './plugins/api-monitor'
@@ -114,5 +117,6 @@ export type {
   TrackEvent,
   TrackOptions,
   TrackPayload,
-  TrackPlugin
+  TrackPlugin,
+  VisualRule
 } from './types'
