@@ -1,7 +1,27 @@
 {
   "name": "@mugsun/track-web",
   "version": "0.1.0",
-  "description": "mugsun 低代码平台 Web 埋点 SDK：core 纯逻辑 + 插件 + Vue 集成",
+  "description": "Lightweight web tracking SDK for mugsun platform — pageview / web-vitals / error / session replay / visual tracking（mugsun 低代码平台 Web 埋点 SDK）",
+  "keywords": [
+    "analytics",
+    "tracking",
+    "web-vitals",
+    "session-replay",
+    "rum",
+    "pageview",
+    "mugsun"
+  ],
+  "homepage": "https://github.com/curdx/mugsun-track#readme",
+  "bugs": {
+    "url": "https://github.com/curdx/mugsun-track/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/curdx/mugsun-track.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
