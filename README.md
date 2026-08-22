@@ -326,6 +326,10 @@ pnpm typecheck  # tsc --noEmit（strict）
 | `@mugsun/track-web/vue` | Vue 插件（install / v-track / router 集成 / errorHandler 挂接） |
 | `@mugsun/track-web/replay` | 会话回放插件（rrweb 动态 import 懒加载，不进主入口首包） |
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mugsun/mugsun-track&type=Date)](https://star-history.com/#mugsun/mugsun-track&Date)
+
 ## License
 
 MIT（见 `package.json` 的 `license` 字段）

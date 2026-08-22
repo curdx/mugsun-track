@@ -326,6 +326,10 @@ Entry points:
 | `@mugsun/track-web/vue` | Vue plugin (install / v-track / router integration / errorHandler hookup) |
 | `@mugsun/track-web/replay` | session-replay plugin (rrweb lazy-loaded via dynamic import, kept out of the main bundle) |
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=mugsun/mugsun-track&type=Date)](https://star-history.com/#mugsun/mugsun-track&Date)
+
 ## License
 
 MIT (see the `license` field in `package.json`)
